@@ -1,0 +1,26 @@
+# Per-board-model port mapping. Copy to config_intel.ini / config_amd.ini
+# and fill the real interface names captured in Step 2.
+#
+# LAN1..LAN6 = the PHYSICAL port labels the customer/spec uses.
+# The value = the OS interface name (ifname) on THIS board model.
+# Swapping this file is the entire Intel -> AMD migration (Phase 2).
+
+[board]
+name = INTEL-DEV
+description = Intel development machine (placeholder names — fill in Step 2)
+
+[port_map]
+LAN1 = enp0s0
+LAN2 = enp0s0
+LAN3 = enp0s0
+LAN4 = enp0s0
+LAN5 = enp0s0
+LAN6 = enp0s0
+
+# On the AMD IMB-A8000M the layout is expected to be (confirm on real HW):
+#   LAN1 = enp3s0     # onboard 1
+#   LAN2 = enp4s0     # onboard 2
+#   LAN3 = enp1s0f3   # I350-T4V2  (bracket order reversed: f3 -> f0)
+#   LAN4 = enp1s0f2
+#   LAN5 = enp1s0f1
+#   LAN6 = enp1s0f0

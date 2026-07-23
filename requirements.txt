@@ -1,0 +1,5 @@
+# Runtime dependency (xlsx reading). CSV/INI/tkinter are stdlib.
+openpyxl>=3.1
+
+# Dev/packaging only (not needed on target machines):
+#   pyinstaller>=6.0   # Step 11: build single-file executable

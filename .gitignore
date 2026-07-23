@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+build/
+dist/
+*.spec
+logs/*.csv
+config/config_*.ini
+!config/*.example
