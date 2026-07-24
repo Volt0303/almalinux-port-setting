@@ -22,9 +22,9 @@ import sys
 from datetime import datetime
 from typing import List, Optional
 
-from .core import loader
+from .core import loader, pipeline
 from .core.applier import Applier, load_port_map, resolve_port
-from .core.compare import PortComparison, compare_port, summarize
+from .core.compare import PortComparison, summarize
 from .core.logwriter import LogWriter, build_rows
 from .core.reader import Reader
 
@@ -66,14 +66,6 @@ def select_machine(res: loader.LoadResult, serial: Optional[str], detect_runner=
 # --------------------------------------------------------------------------
 # Pipeline
 # --------------------------------------------------------------------------
-def _resolve_failure_row(row) -> PortComparison:
-    return PortComparison(
-        con_name=row.con_name, ifname=row.ifname or "?",
-        expected=row.ip_address, actual="(resolve error)", ok=False,
-        reason="invalid data (line %d)" % row.source_line,
-    )
-
-
 def run_pipeline(machine, port_map, commit, applier: Applier, reader: Reader,
                  logwriter: Optional[LogWriter], out=sys.stdout) -> int:
     """Core pipeline for one machine. Returns exit code (0 ok / 1 NG)."""
@@ -82,41 +74,22 @@ def run_pipeline(machine, port_map, commit, applier: Applier, reader: Reader,
 
     # --- DRY-RUN: just show the planned commands, change nothing ---
     if not commit:
-        for row in machine.ports:
-            try:
-                rp = resolve_port(row, port_map)
-            except Exception as e:  # noqa: BLE001
-                print("  %-5s SKIP (invalid): %s" % (row.con_name, e), file=out)
+        for con_name, rp, cmds, err in pipeline.dry_plan(machine, port_map, applier):
+            if err:
+                print("  %-5s SKIP (invalid): %s" % (con_name, err), file=out)
                 continue
             for w in rp.warnings:
                 print("  ! %s" % w, file=out)
             print("  %-5s -> %s  %s" % (rp.con_name, rp.ifname, rp.cidr), file=out)
-            for argv in applier.plan_port(rp, exists=False):
-                print("      $ %s" % " ".join(argv), file=out)
+            for c in cmds:
+                print("      $ %s" % c, file=out)
         print("\n(dry-run: no changes applied, no comparison performed)", file=out)
         return 0
 
     # --- COMMIT: apply, read back, compare, log ---
-    expecteds = []
-    comparisons: List[PortComparison] = []
-    for row in machine.ports:
-        try:
-            rp = resolve_port(row, port_map)
-        except Exception:  # noqa: BLE001 — bad ip/mask/unresolvable interface
-            expecteds.append(None)
-            comparisons.append(_resolve_failure_row(row))
-            continue
-        for w in rp.warnings:
-            print("  ! %s" % w, file=out)
-        apply_res = applier.apply_port(rp)
-        state = reader.read_port(rp.ifname)
-        comp = compare_port(rp, state)
-        if not apply_res.ok and comp.ok:
-            # apply reported failure but readback somehow matched — flag it
-            comp.ok = False
-            comp.reason = apply_res.error
-        expecteds.append(rp)
-        comparisons.append(comp)
+    pairs = pipeline.commit_machine(machine, port_map, applier, reader)
+    expecteds = [e for e, _ in pairs]
+    comparisons: List[PortComparison] = [c for _, c in pairs]
 
     _print_table(machine.sn, comparisons, out)
 
