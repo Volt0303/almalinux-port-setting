@@ -1,4 +1,4 @@
-"""applier.py — apply per-port IPv4 settings via NetworkManager (nmcli).
+"""applier.py - apply per-port IPv4 settings via NetworkManager (nmcli).
 
 Flow per port:
   1. resolve LAN label -> ifname (config port_map is authoritative; CSV
@@ -72,7 +72,7 @@ def load_port_map(path: str) -> Dict[str, str]:
 
 
 # --------------------------------------------------------------------------
-# Resolution (pure — no network)
+# Resolution (pure - no network)
 # --------------------------------------------------------------------------
 def resolve_port(row: PortRow, port_map: Dict[str, str]) -> ResolvedPort:
     """Resolve one PortRow into a ResolvedPort, raising ValueError on bad data."""
@@ -86,7 +86,7 @@ def resolve_port(row: PortRow, port_map: Dict[str, str]) -> ResolvedPort:
     warnings: List[str] = []
     if cfg_ifname and row.ifname and cfg_ifname != row.ifname:
         warnings.append(
-            "%s: config maps to %s but CSV says %s — using config"
+            "%s: config maps to %s but CSV says %s - using config"
             % (row.con_name, cfg_ifname, row.ifname)
         )
     cidr = netmask.to_cidr(row.ip_address, row.subnet)  # raises on bad ip/mask

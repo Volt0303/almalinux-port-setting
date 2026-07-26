@@ -1,4 +1,4 @@
-"""logwriter.py — persist run results to a CSV log (spec 14).
+"""logwriter.py - persist run results to a CSV log (spec 14).
 
 Columns (matching spec 14.1):
     datetime, serial, lan, ip, subnet, gateway, dns, actual, result, error

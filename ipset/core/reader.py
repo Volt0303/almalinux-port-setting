@@ -1,4 +1,4 @@
-"""reader.py — read back the ACTUAL applied IPv4 state per interface.
+"""reader.py - read back the ACTUAL applied IPv4 state per interface.
 
 Addresses are read from the kernel (`ip -o -4 addr show dev <if>`), which is
 the ground truth of what is really applied (catches the spec-15 case where

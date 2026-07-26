@@ -1,4 +1,4 @@
-"""cli.py — headless entry point: load -> resolve -> apply -> readback -> compare -> log.
+"""cli.py - headless entry point: load -> resolve -> apply -> readback -> compare -> log.
 
 Modes:
     --dry-run (default)  print the nmcli commands that WOULD run; touch nothing
@@ -19,11 +19,10 @@ import argparse
 import os
 import subprocess
 import sys
-from datetime import datetime
 from typing import List, Optional
 
 from .core import loader, pipeline
-from .core.applier import Applier, load_port_map, resolve_port
+from .core.applier import Applier, load_port_map
 from .core.compare import PortComparison, summarize
 from .core.logwriter import LogWriter, build_rows
 from .core.reader import Reader
@@ -98,7 +97,7 @@ def run_pipeline(machine, port_map, commit, applier: Applier, reader: Reader,
         logwriter.write(rows)
         print("Log saved: %s" % logwriter.path, file=out)
 
-    _, ng, all_ok = summarize(comparisons)
+    _, _, all_ok = summarize(comparisons)
     return 0 if all_ok else 1
 
 

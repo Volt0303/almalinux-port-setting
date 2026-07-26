@@ -1,4 +1,4 @@
-"""netmask.py — IPv4 validation and netmask <-> CIDR normalization.
+"""netmask.py - IPv4 validation and netmask <-> CIDR normalization.
 
 nmcli wants addresses as ip/prefix (e.g. 192.168.1.100/24). The supply file
 gives dotted netmasks (255.255.255.0). This module bridges the two and

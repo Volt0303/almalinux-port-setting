@@ -1,4 +1,4 @@
-"""loader.py — read CSV/xlsx supply files into normalized, validated rows.
+"""loader.py - read CSV/xlsx supply files into normalized, validated rows.
 
 Output model:
     PortRow   one LAN port's intended settings (one input line)
@@ -105,7 +105,7 @@ def load(path: str) -> LoadResult:
     ext = os.path.splitext(path)[1].lower()
     try:
         rows = _rows_from_xlsx(path) if ext in (".xlsx", ".xlsm") else _rows_from_csv(path)
-    except Exception as e:  # noqa: BLE001 — surface any parse failure as an error
+    except Exception as e:  # noqa: BLE001 - surface any parse failure as an error
         res.errors.append("Failed to read %s: %s" % (path, e))
         return res
 

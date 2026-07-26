@@ -1,4 +1,4 @@
-"""gui.py — thin Tkinter front-end over the shared core pipeline (spec 10).
+"""gui.py - thin Tkinter front-end over the shared core pipeline (spec 10).
 
 Operator flow:  choose file  ->  pick serial  ->  [設定開始]  ->  OK/NG table.
 ALL logic lives in ipset.core.*; this module only renders and calls it, so
@@ -166,10 +166,8 @@ class App(tk.Tk):
                 log_path = "ログ保存失敗: %s" % e
         else:
             # dry-run: show planned commands as the "actual" column
-            plans = pipeline.dry_plan(machine, port_map, applier)
-            pairs, log_path = [], None
-            for con_name, rp, cmds, err in plans:
-                pairs.append((con_name, rp, cmds, err))
+            pairs = pipeline.dry_plan(machine, port_map, applier)
+            log_path = None
         self.after(0, lambda: self._render(pairs, commit, log_path))
 
     def _render(self, pairs, commit, log_path):

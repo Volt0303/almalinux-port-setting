@@ -1,4 +1,4 @@
-"""pipeline.py — shared orchestration used by both cli.py and gui.py.
+"""pipeline.py - shared orchestration used by both cli.py and gui.py.
 
 Keeps the load -> resolve -> apply -> readback -> compare sequence in ONE
 place so the GUI is a thin view over the same logic as the CLI.
@@ -42,7 +42,7 @@ def commit_machine(machine, port_map, applier: Applier, reader: Reader
     for row in machine.ports:
         try:
             rp = resolve_port(row, port_map)
-        except Exception:  # noqa: BLE001 — bad ip/mask/unresolvable interface
+        except Exception:  # noqa: BLE001 - bad ip/mask/unresolvable interface
             pairs.append((None, resolve_failure_row(row)))
             continue
         apply_res = applier.apply_port(rp)

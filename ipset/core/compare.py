@@ -1,4 +1,4 @@
-"""compare.py — compare expected settings vs actual applied state (spec 13).
+"""compare.py - compare expected settings vs actual applied state (spec 13).
 
 Produces one PortComparison per port with an OK/NG verdict and a reason,
 feeding both the on-screen result table and the CSV log.
