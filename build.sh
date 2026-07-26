@@ -32,5 +32,9 @@ cp -n config/config_intel.ini.example dist/config/ 2>/dev/null || true
 cp docs/操作マニュアル.md dist/ 2>/dev/null || true
 cp IPsetting_sample.csv dist/ 2>/dev/null || true
 
+echo ">> staging launcher"
+cp launch_gui.sh dist/
+chmod +x dist/launch_gui.sh
+
 echo ">> done. Artifacts in ./dist"
 ls -1 dist

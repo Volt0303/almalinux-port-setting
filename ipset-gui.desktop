@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=LAN IP設定ツール
+Comment=6ポートLAN IPアドレス自動設定・照合ツール
+Exec=bash -c "xhost +si:localuser:root; sudo -E DISPLAY=$DISPLAY XAUTHORITY=$XAUTHORITY /opt/ipset/dist/ipset-gui"
+Icon=network-wired
+Terminal=false
+Categories=System;Network;
+StartupNotify=true
