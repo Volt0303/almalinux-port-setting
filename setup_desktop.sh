@@ -23,7 +23,7 @@ fi
 echo ">> installing to $INSTALL_DIR"
 mkdir -p "$INSTALL_DIR"
 cp -r "$SCRIPT_DIR/dist/." "$INSTALL_DIR/"
-chmod +x "$INSTALL_DIR/ipset-gui" 2>/dev/null || true
+chmod +x "$INSTALL_DIR/ipset-gui" "$INSTALL_DIR/launch_gui.sh" 2>/dev/null || true
 
 # ── 2. Passwordless sudo for this binary only ────────────────────────────────
 # Operators are not developers; they must not see a password prompt.
@@ -38,7 +38,7 @@ Version=1.0
 Type=Application
 Name=LAN IP設定ツール
 Comment=6ポートLAN IPアドレス自動設定・照合ツール
-Exec=bash -c 'xhost +si:localuser:root >/dev/null 2>&1; sudo $INSTALL_DIR/ipset-gui'
+Exec=$INSTALL_DIR/launch_gui.sh
 Icon=network-wired
 Terminal=false
 Categories=System;Network;

@@ -1,17 +1,22 @@
 #!/usr/bin/env bash
-# Launcher for 6-port LAN IP setting GUI.
-# Run this script directly, or via the .desktop shortcut.
-# Works whether the binary (dist/ipset-gui) or source is present.
+# Launcher for the GUI when started from a desktop icon.
+# Forwards the X display into the root process (sudo strips it otherwise)
+# and logs any startup error to /tmp/ipset-gui.log so failures are visible.
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+LOG=/tmp/ipset-gui.log
+export DISPLAY="${DISPLAY:-:0}"
 
-# Allow root to use the current user's X display (needed when sudo drops env)
-xhost +si:localuser:root 2>/dev/null || true
+# Allow root to draw on the current user's display
+xhost +si:localuser:root >/dev/null 2>&1 || true
 
-if [ -x "$SCRIPT_DIR/dist/ipset-gui" ]; then
-    # Built binary
-    exec sudo -E "$SCRIPT_DIR/dist/ipset-gui"
+# Pick binary if installed, else run from source
+if [ -x /opt/ipset/ipset-gui ]; then
+    APP=(/opt/ipset/ipset-gui)
+elif [ -x "$(dirname "$0")/ipset-gui" ]; then
+    APP=("$(dirname "$0")/ipset-gui")
 else
-    # Source fallback
-    exec sudo -E python3 -m ipset.gui
+    APP=(python3 -m ipset.gui)
 fi
+
+echo "=== launch $(date) DISPLAY=$DISPLAY XAUTHORITY=$XAUTHORITY ===" >> "$LOG"
+exec sudo -E env DISPLAY="$DISPLAY" XAUTHORITY="$XAUTHORITY" "${APP[@]}" >> "$LOG" 2>&1
