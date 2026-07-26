@@ -1,50 +1,65 @@
 #!/usr/bin/env bash
 # One-time setup for a production device.
-# Copy dist/ to /opt/ipset, then place a desktop shortcut.
+# Run as root (or with sudo) AFTER running build.sh.
 #
-# Usage (run as root or with sudo):
 #   sudo bash setup_desktop.sh
 #
-# After this, the operator double-clicks "LAN IP設定ツール" on the desktop.
+# Result: a double-clickable "LAN IP設定ツール" icon appears on the desktop.
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 INSTALL_DIR=/opt/ipset
-DESKTOP_FILE=/usr/local/share/applications/ipset-gui.desktop
+
+# Detect the real user (the one who called sudo, not root)
+REAL_USER="${SUDO_USER:-$USER}"
+REAL_HOME=$(eval echo "~$REAL_USER")
 
 if [ ! -d "$SCRIPT_DIR/dist" ]; then
-    echo "ERROR: dist/ not found. Run 'bash build.sh' first, then re-run this script." >&2
+    echo "ERROR: dist/ not found. Run 'bash build.sh' first." >&2
     exit 1
 fi
 
+# ── 1. Install binary ────────────────────────────────────────────────────────
 echo ">> installing to $INSTALL_DIR"
 mkdir -p "$INSTALL_DIR"
 cp -r "$SCRIPT_DIR/dist/." "$INSTALL_DIR/"
-chmod +x "$INSTALL_DIR/ipset-gui" "$INSTALL_DIR/launch_gui.sh" 2>/dev/null || true
+chmod +x "$INSTALL_DIR/ipset-gui" 2>/dev/null || true
 
-# Allow operator to run nmcli via sudo without a password prompt
-SUDOERS_LINE="%wheel ALL=(ALL) NOPASSWD: /opt/ipset/ipset-gui, /opt/ipset/launch_gui.sh"
-if ! grep -qF "$SUDOERS_LINE" /etc/sudoers.d/ipset 2>/dev/null; then
-    echo "$SUDOERS_LINE" > /etc/sudoers.d/ipset
-    chmod 440 /etc/sudoers.d/ipset
-    echo ">> sudoers entry added"
-fi
+# ── 2. Passwordless sudo for this binary only ────────────────────────────────
+# Operators are not developers; they must not see a password prompt.
+SUDOERS=/etc/sudoers.d/ipset
+echo "ALL ALL=(ALL) NOPASSWD: $INSTALL_DIR/ipset-gui" > "$SUDOERS"
+chmod 440 "$SUDOERS"
+echo ">> sudoers: passwordless launch enabled for $INSTALL_DIR/ipset-gui"
 
-echo ">> installing desktop shortcut"
-mkdir -p "$(dirname "$DESKTOP_FILE")"
-cat > "$DESKTOP_FILE" <<'EOF'
-[Desktop Entry]
+# ── 3. Create the .desktop file ─────────────────────────────────────────────
+DESKTOP_CONTENT="[Desktop Entry]
 Version=1.0
 Type=Application
 Name=LAN IP設定ツール
 Comment=6ポートLAN IPアドレス自動設定・照合ツール
-Exec=bash -c "xhost +si:localuser:root; sudo -E DISPLAY=$DISPLAY XAUTHORITY=$XAUTHORITY /opt/ipset/ipset-gui"
+Exec=bash -c 'xhost +si:localuser:root >/dev/null 2>&1; sudo $INSTALL_DIR/ipset-gui'
 Icon=network-wired
 Terminal=false
 Categories=System;Network;
-StartupNotify=true
-EOF
+StartupNotify=true"
 
+# Applications menu (all users)
+mkdir -p /usr/local/share/applications
+echo "$DESKTOP_CONTENT" > /usr/local/share/applications/ipset-gui.desktop
 update-desktop-database /usr/local/share/applications/ 2>/dev/null || true
-echo ">> done. Shortcut: $DESKTOP_FILE"
-echo "   Operators can now launch from the applications menu: 'LAN IP設定ツール'"
+
+# Desktop icon (the real user's Desktop folder)
+DESKTOP_DIR="$REAL_HOME/Desktop"
+if [ -d "$DESKTOP_DIR" ]; then
+    echo "$DESKTOP_CONTENT" > "$DESKTOP_DIR/ipset-gui.desktop"
+    chmod +x "$DESKTOP_DIR/ipset-gui.desktop"
+    chown "$REAL_USER:" "$DESKTOP_DIR/ipset-gui.desktop"
+    echo ">> desktop icon placed at $DESKTOP_DIR/ipset-gui.desktop"
+else
+    echo ">> (Desktop folder not found; shortcut is in the applications menu only)"
+fi
+
+echo ""
+echo ">> Setup complete."
+echo "   The operator can now double-click 'LAN IP設定ツール' to start the tool."
