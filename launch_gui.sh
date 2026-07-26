@@ -6,6 +6,9 @@
 LOG=/tmp/ipset-gui.log
 export DISPLAY="${DISPLAY:-:0}"
 
+# Change to the install directory so relative paths (config/, logs/) resolve correctly
+cd /opt/ipset
+
 # Allow root to draw on the current user's display
 xhost +si:localuser:root >/dev/null 2>&1 || true
 
