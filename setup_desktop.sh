@@ -12,6 +12,11 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 INSTALL_DIR=/opt/ipset
 DESKTOP_FILE=/usr/local/share/applications/ipset-gui.desktop
 
+if [ ! -d "$SCRIPT_DIR/dist" ]; then
+    echo "ERROR: dist/ not found. Run 'bash build.sh' first, then re-run this script." >&2
+    exit 1
+fi
+
 echo ">> installing to $INSTALL_DIR"
 mkdir -p "$INSTALL_DIR"
 cp -r "$SCRIPT_DIR/dist/." "$INSTALL_DIR/"
