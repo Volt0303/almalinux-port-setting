@@ -49,8 +49,11 @@ mkdir -p /usr/local/share/applications
 echo "$DESKTOP_CONTENT" > /usr/local/share/applications/ipset-gui.desktop
 update-desktop-database /usr/local/share/applications/ 2>/dev/null || true
 
-# Desktop icon (the real user's Desktop folder)
-DESKTOP_DIR="$REAL_HOME/Desktop"
+# Desktop icon (locale-aware: "Desktop" on English, "デスクトップ" on Japanese, etc.)
+DESKTOP_DIR=$(sudo -u "$REAL_USER" xdg-user-dir DESKTOP 2>/dev/null || echo "")
+if [ -z "$DESKTOP_DIR" ] || [ ! -d "$DESKTOP_DIR" ]; then
+    DESKTOP_DIR="$REAL_HOME/Desktop"
+fi
 if [ -d "$DESKTOP_DIR" ]; then
     echo "$DESKTOP_CONTENT" > "$DESKTOP_DIR/ipset-gui.desktop"
     chmod +x "$DESKTOP_DIR/ipset-gui.desktop"
