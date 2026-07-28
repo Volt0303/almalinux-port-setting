@@ -8,11 +8,20 @@ Requires python3-tkinter on the target (not in AlmaLinux minimal):
     sudo dnf install -y python3-tkinter
 
 Apply runs on a worker thread; results are marshalled back with .after().
+
+Production conveniences (requested by the customer):
+  * serial field is type-to-filter (enter part of a serial, pick from
+    the candidate list) - faster for 400-unit production.
+  * the run log is written to the operator's Desktop.
+  * after a real commit+log, closing the window offers to self-uninstall
+    the tool (reduces the pre-shipping cleanup work).
+
 Python 3.9 compatible.
 """
 from __future__ import annotations
 
 import os
+import shutil
 import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
@@ -24,7 +33,72 @@ from .core.logwriter import LogWriter, build_rows
 from .core.reader import Reader
 
 DEFAULT_CONFIG = os.path.join("config", "config_intel.ini")
-DEFAULT_LOG = os.path.join("logs", "result.csv")
+LOG_NAME = "result.csv"
+INSTALL_DIR = "/opt/ipset"
+
+
+# --------------------------------------------------------------------------
+# Environment helpers (locale-aware Desktop, real user under sudo)
+# --------------------------------------------------------------------------
+def _real_home() -> str:
+    """Home of the invoking user (not root, when launched via sudo)."""
+    user = os.environ.get("SUDO_USER") or os.environ.get("USER") or ""
+    if user:
+        try:
+            import pwd
+            return pwd.getpwnam(user).pw_dir
+        except (KeyError, ImportError):
+            pass
+    return os.path.expanduser("~")
+
+
+def desktop_dir() -> str:
+    """The operator's Desktop folder (Japanese or English), else home."""
+    home = _real_home()
+    for name in ("デスクトップ", "Desktop"):
+        d = os.path.join(home, name)
+        if os.path.isdir(d):
+            return d
+    return home
+
+
+def _chown_to_user(path: str) -> None:
+    """When running as root (sudo), hand a created file back to the user."""
+    try:
+        user = os.environ.get("SUDO_USER")
+        if user and hasattr(os, "geteuid") and os.geteuid() == 0:
+            import pwd
+            pw = pwd.getpwnam(user)
+            os.chown(path, pw.pw_uid, pw.pw_gid)
+    except Exception:  # noqa: BLE001 - cosmetic only
+        pass
+
+
+def uninstall_tool(remove_log: bool, log_path=None):
+    """Remove the installed tool from this machine. Returns [error, ...].
+
+    Needs root for /opt/ipset and /etc/sudoers.d (the GUI runs under sudo).
+    The Desktop log is kept unless remove_log is True.
+    """
+    targets = []
+    if os.path.isdir(INSTALL_DIR):
+        targets.append(INSTALL_DIR)
+    targets.append("/usr/local/share/applications/ipset-gui.desktop")
+    targets.append("/etc/sudoers.d/ipset")
+    targets.append(os.path.join(desktop_dir(), "ipset-gui.desktop"))
+    if remove_log and log_path:
+        targets.append(log_path)
+
+    errors = []
+    for t in targets:
+        try:
+            if os.path.isdir(t):
+                shutil.rmtree(t, ignore_errors=True)
+            elif os.path.lexists(t):
+                os.remove(t)
+        except OSError as e:
+            errors.append("%s: %s" % (t, e))
+    return errors
 
 
 class App(tk.Tk):
@@ -34,7 +108,11 @@ class App(tk.Tk):
         self.geometry("720x560")
         self._load_result = None
         self._busy = False
+        self._all_serials = []
+        self._commit_done = False       # a real commit+log completed this session
+        self._commit_log_path = None
         self._build()
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
 
     # ---- layout ---------------------------------------------------------
     def _build(self):
@@ -52,10 +130,19 @@ class App(tk.Tk):
 
         ttk.Label(top, text="対象シリアル:").grid(row=2, column=0, sticky="w")
         self.serial_var = tk.StringVar()
-        self.serial_cb = ttk.Combobox(top, textvariable=self.serial_var, state="readonly", width=30)
-        self.serial_cb.grid(row=2, column=1, sticky="w")
-        self.serial_cb.bind("<<ComboboxSelected>>", lambda e: self._show_expected())
+        self.serial_entry = ttk.Entry(top, textvariable=self.serial_var, width=32)
+        self.serial_entry.grid(row=2, column=1, sticky="w")
+        self.serial_entry.bind("<KeyRelease>", self._on_serial_key)
+        self.serial_entry.bind("<Down>", self._serial_down)
+        ttk.Label(top, text="（一部入力で候補表示）", foreground="#666").grid(
+            row=2, column=2, sticky="w")
         top.columnconfigure(1, weight=1)
+
+        # floating candidate list (overlaid with place(); does not reflow layout)
+        self.serial_list = tk.Listbox(self, height=6, exportselection=False)
+        self.serial_list.bind("<<ListboxSelect>>", self._pick_serial)
+        self.serial_list.bind("<Return>", self._pick_serial)
+        self.serial_list.bind("<Escape>", lambda e: self._hide_serial_list())
 
         # expected values
         ttk.Label(self, text="設定内容（期待値）").pack(anchor="w", **pad)
@@ -86,6 +173,62 @@ class App(tk.Tk):
         tree.pack(fill="x", padx=6)
         return tree
 
+    # ---- serial type-to-filter -----------------------------------------
+    def _on_serial_key(self, event):
+        if event.keysym in ("Up", "Down", "Return", "Escape", "Left", "Right",
+                            "Tab", "Shift_L", "Shift_R", "Control_L", "Control_R"):
+            return
+        txt = self.serial_var.get().strip()
+        low = txt.lower()
+        matches = [s for s in self._all_serials if low in s.lower()] if txt \
+            else list(self._all_serials)
+
+        self.serial_list.delete(0, "end")
+        for s in matches:
+            self.serial_list.insert("end", s)
+
+        # exact full match -> hide list and show its expected values
+        if txt in self._all_serials:
+            self._hide_serial_list()
+            self._show_expected()
+        elif matches:
+            self._show_serial_list(len(matches))
+        else:
+            self._hide_serial_list()
+            self.exp_tree.delete(*self.exp_tree.get_children())
+
+    def _show_serial_list(self, count):
+        self.update_idletasks()
+        x = self.serial_entry.winfo_rootx() - self.winfo_rootx()
+        y = (self.serial_entry.winfo_rooty() - self.winfo_rooty()
+             + self.serial_entry.winfo_height())
+        w = self.serial_entry.winfo_width()
+        self.serial_list.configure(height=min(6, max(1, count)))
+        self.serial_list.place(x=x, y=y, width=w)
+        self.serial_list.lift()
+
+    def _hide_serial_list(self):
+        self.serial_list.place_forget()
+
+    def _serial_down(self, event):
+        if self.serial_list.winfo_ismapped() and self.serial_list.size() > 0:
+            self.serial_list.focus_set()
+            self.serial_list.selection_clear(0, "end")
+            self.serial_list.selection_set(0)
+            self.serial_list.activate(0)
+            return "break"
+
+    def _pick_serial(self, event):
+        sel = self.serial_list.curselection()
+        if not sel:
+            return
+        value = self.serial_list.get(sel[0])
+        self.serial_var.set(value)
+        self._hide_serial_list()
+        self.serial_entry.focus_set()
+        self.serial_entry.icursor("end")
+        self._show_expected()
+
     # ---- actions --------------------------------------------------------
     def _browse(self):
         path = filedialog.askopenfilename(
@@ -102,10 +245,10 @@ class App(tk.Tk):
             messagebox.showerror("読込エラー", "\n".join(res.errors))
             return
         self._load_result = res
-        serials = sorted(res.machines)
-        self.serial_cb["values"] = serials
-        if serials:
-            self.serial_var.set(serials[0])
+        self._all_serials = sorted(res.machines)
+        self._hide_serial_list()
+        if self._all_serials:
+            self.serial_var.set(self._all_serials[0])
             self._show_expected()
 
     def _show_expected(self):
@@ -126,7 +269,7 @@ class App(tk.Tk):
     def _current_machine(self):
         if not self._load_result:
             return None
-        return self._load_result.machines.get(self.serial_var.get())
+        return self._load_result.machines.get(self.serial_var.get().strip())
 
     def _start(self):
         if self._busy:
@@ -159,8 +302,9 @@ class App(tk.Tk):
             pairs = pipeline.commit_machine(machine, port_map, applier, reader)
             log_path = None
             try:
-                lw = LogWriter(DEFAULT_LOG)
+                lw = LogWriter(os.path.join(desktop_dir(), LOG_NAME))
                 lw.write(build_rows(machine.sn, pairs, lw.now()))
+                _chown_to_user(lw.path)
                 log_path = lw.path
             except Exception as e:  # noqa: BLE001
                 log_path = "ログ保存失敗: %s" % e
@@ -180,8 +324,13 @@ class App(tk.Tk):
                                              "OK" if c.ok else "NG"))
             ok, ng, all_ok = summarize(comparisons)
             msg = "結果: %s (OK=%d NG=%d)" % ("PASS" if all_ok else "FAIL", ok, ng)
-            if log_path:
+            # a real, saved log enables the self-uninstall-on-close flow
+            if log_path and not log_path.startswith("ログ保存失敗"):
+                self._commit_done = True
+                self._commit_log_path = log_path
                 msg += "   ログ: %s" % log_path
+            elif log_path:
+                msg += "   %s" % log_path
             self.status.set(msg)
         else:
             for con_name, rp, cmds, err in pairs:
@@ -193,6 +342,37 @@ class App(tk.Tk):
             self.status.set("ドライラン完了（変更なし）。")
         self._busy = False
         self.start_btn.config(state="normal")
+
+    # ---- close / self-uninstall ----------------------------------------
+    def _on_close(self):
+        # only offer uninstall once real settings were applied AND logged
+        if not self._commit_done:
+            self.destroy()
+            return
+        ans = messagebox.askyesnocancel(
+            "終了",
+            "検査を終了します。\n\n"
+            "このツールをこの端末から削除（アンインストール）しますか？\n\n"
+            "・「はい」　　：ツールを削除して終了します\n"
+            "・「いいえ」　：削除せず終了します\n"
+            "・「キャンセル」：終了しません")
+        if ans is None:
+            return  # cancel -> keep window open
+        if not ans:
+            self.destroy()  # close without uninstalling
+            return
+        remove_log = messagebox.askyesno(
+            "ログの削除",
+            "ログ（CSV）も削除しますか？\n\n"
+            "・「いいえ」：ログはデスクトップに残します（推奨）\n"
+            "・「はい」　：ログも削除します")
+        errors = uninstall_tool(remove_log, self._commit_log_path)
+        if errors:
+            messagebox.showwarning(
+                "削除", "一部を削除できませんでした:\n" + "\n".join(errors))
+        else:
+            messagebox.showinfo("削除", "ツールを削除しました。")
+        self.destroy()
 
 
 def main():
