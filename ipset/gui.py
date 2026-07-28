@@ -138,11 +138,15 @@ class App(tk.Tk):
             row=2, column=2, sticky="w")
         top.columnconfigure(1, weight=1)
 
-        # floating candidate list (overlaid with place(); does not reflow layout)
+        # floating candidate list (overlaid with place(); does not reflow layout).
+        # NOTE: commit only on an explicit choice (click / Enter). Do NOT bind
+        # <<ListboxSelect>>, which also fires during arrow-key navigation and
+        # would auto-commit on the first Down keypress.
         self.serial_list = tk.Listbox(self, height=6, exportselection=False)
-        self.serial_list.bind("<<ListboxSelect>>", self._pick_serial)
+        self.serial_list.bind("<ButtonRelease-1>", self._pick_serial)
+        self.serial_list.bind("<Double-Button-1>", self._pick_serial)
         self.serial_list.bind("<Return>", self._pick_serial)
-        self.serial_list.bind("<Escape>", lambda e: self._hide_serial_list())
+        self.serial_list.bind("<Escape>", self._escape_serial_list)
 
         # expected values
         ttk.Label(self, text="設定内容（期待値）").pack(anchor="w", **pad)
@@ -217,6 +221,11 @@ class App(tk.Tk):
             self.serial_list.selection_set(0)
             self.serial_list.activate(0)
             return "break"
+
+    def _escape_serial_list(self, event):
+        self._hide_serial_list()
+        self.serial_entry.focus_set()
+        self.serial_entry.icursor("end")
 
     def _pick_serial(self, event):
         sel = self.serial_list.curselection()
