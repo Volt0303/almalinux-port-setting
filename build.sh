@@ -27,8 +27,11 @@ pyinstaller --onefile --name ipset-gui \
 
 echo ">> staging config + manual + sample"
 mkdir -p dist/config dist/logs
-cp -n config/config_intel.ini.example dist/config/ 2>/dev/null || true
-[ -f config/config_intel.ini ] && cp config/config_intel.ini dist/config/ || true
+# Copy EVERY board config (config_intel.ini, config_amd.ini, ...) so the
+# installed tool can auto-detect the right one for the machine it runs on.
+cp config/*.ini dist/config/ 2>/dev/null || true
+cp config/*.ini.example dist/config/ 2>/dev/null || true
+echo "   configs staged: $(ls -1 dist/config/*.ini 2>/dev/null | wc -l)"
 cp docs/操作マニュアル.md dist/ 2>/dev/null || true
 cp IPsetting_sample.csv dist/ 2>/dev/null || true
 
