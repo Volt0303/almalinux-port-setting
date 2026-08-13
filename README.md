@@ -142,14 +142,23 @@ bash build.sh
 **最重要ポイントは手順3（ポートマッピング）** です。ポート名は機種ごとに異なります。
 
 ### 1. ファイルを配置
-プロジェクト一式（または `dist/` と各スクリプト）を USB / `scp` で対象機へコピー。
+**量産機へ配置するのは `dist/` フォルダ一式 と `setup_desktop.sh` の2つ**です
+（Pythonソースは不要。ビルド済み実行ファイルで動作します）。
+USB / `scp` で対象機の任意のフォルダへコピーします（配置先は任意。インストール先は
+手順5で `/opt/ipset/` へ自動配置されます）。
+
+> 開発・保守用にはプロジェクト一式（ソース含む）を別途保管してください。
 
 ### 2. GUI用の依存パッケージを導入
 ```bash
-sudo dnf install -y python3-tkinter google-noto-sans-cjk-jp-fonts
+sudo dnf install -y google-noto-sans-cjk-jp-fonts
 ```
 > **日本語フォントは必須**です。未導入だと GUI のラベルが □□□（豆腐）になります。
 > minimal インストールの実機では入っていないため、必ず導入してください。
+>
+> **`python3-tkinter` は「ビルド版（`dist/ipset-gui`）を使う場合は不要」**です
+> （PyInstaller が同梱するため）。Pythonソースから直接実行する場合のみ
+> `sudo dnf install -y python3-tkinter` を追加してください。
 
 ### 3. ⚠️ ポートマッピングを設定（最重要）
 物理ポート LAN1〜6 と OS のインターフェース名（ifname）の対応を確認します。
