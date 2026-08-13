@@ -208,6 +208,9 @@ bash build.sh
 ```bash
 sudo bash setup_desktop.sh
 ```
+> ツール起動中でも実行可（旧バイナリを unlink してから配置するため
+> `Text file busy` にならない）。ただし新版の反映には開き直しが必要です。
+
 これにより次が行われます:
 - `dist/` 一式を `/opt/ipset/` へインストール
 - この実行ファイルに限り **パスワードなし sudo** を許可（`/etc/sudoers.d/ipset`）
@@ -383,6 +386,7 @@ python3 -m unittest discover -s tests
 | ログがデスクトップに無い | 実ユーザ判定不可 | `SUDO_USER` を保持した起動（`launch_gui.sh`）で実ユーザのデスクトップへ保存 |
 | **アイコン起動とコマンド実行で動作が違う**（例: 設定INIが `config_intel.ini` のまま） | **アイコンは `/opt/ipset` の導入版、コマンドは作業フォルダのソースを実行**（別物） | ソース変更後は `bash build.sh` → `sudo bash setup_desktop.sh` で導入版を更新 |
 | 自動判別が効かない（導入版） | `/opt/ipset/config/` に該当INIが無い／導入版が旧ビルド | `ls /opt/ipset/config/` で確認。`build.sh` は `config/*.ini` を全てコピーします |
+| `Text file busy` / `テキストファイルがビジー状態です` | 起動中の実行ファイルは上書き不可（ETXTBSY） | ツールを閉じて再実行。`setup_desktop.sh` は旧バイナリを unlink してから配置するため、起動中でも導入は継続可（新版の反映には再起動が必要） |
 
 > **注意（リモート作業時）**: AnyDesk 接続を保持しているインターフェース
 > （例: `enp3s0` 192.168.1.41/24）に対して `--commit` を実行すると接続が切れます。

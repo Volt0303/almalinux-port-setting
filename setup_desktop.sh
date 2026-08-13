@@ -22,6 +22,16 @@ fi
 # ── 1. Install binary ────────────────────────────────────────────────────────
 echo ">> installing to $INSTALL_DIR"
 mkdir -p "$INSTALL_DIR"
+
+# A RUNNING executable cannot be overwritten ("Text file busy"/ETXTBSY).
+# Unlinking it first always succeeds - the running process keeps its own
+# inode alive - so the copy below works even if the tool is open.
+if pgrep -f "$INSTALL_DIR/ipset-gui" >/dev/null 2>&1; then
+    echo ">> NOTE: ツールが起動中です。インストールは続行しますが、"
+    echo "         新しい版を使うには一度ツールを閉じて開き直してください。"
+fi
+rm -f "$INSTALL_DIR/ipset-gui" "$INSTALL_DIR/ipset-cli" 2>/dev/null || true
+
 cp -r "$SCRIPT_DIR/dist/." "$INSTALL_DIR/"
 chmod +x "$INSTALL_DIR/ipset-gui" "$INSTALL_DIR/launch_gui.sh" 2>/dev/null || true
 

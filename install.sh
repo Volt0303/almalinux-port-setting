@@ -60,6 +60,14 @@ ok "作業フォルダ: $SCRIPT_DIR"
 command -v python3 >/dev/null 2>&1 || die "python3 が見つかりません。"
 ok "Python: $(python3 --version 2>&1)"
 
+# 起動中のツールがあると上書きできないため、先に知らせる
+if pgrep -f "/opt/ipset/ipset-gui" >/dev/null 2>&1; then
+    warn "ツール（LAN IP設定ツール）が起動中です。"
+    echo "       ${BOLD}先にツールの画面を閉じてから続行してください。${RESET}"
+    echo "       （閉じずに続行してもインストールは行えますが、"
+    echo "         新しい版を使うには開き直しが必要です。）"
+fi
+
 echo ""
 echo "  これからインストールを開始します。"
 echo "  途中でパスワードの入力を求められます（ログイン時のパスワード）。"
