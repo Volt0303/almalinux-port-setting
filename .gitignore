@@ -6,5 +6,5 @@ build/
 dist/
 *.spec
 logs/*.csv
-config/config_*.ini
+#config/config_*.ini
 !config/*.example
