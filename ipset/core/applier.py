@@ -61,8 +61,12 @@ class PortApplyResult:
 # Config
 # --------------------------------------------------------------------------
 def load_port_map(path: str) -> Dict[str, str]:
-    """Read [port_map] from an INI config into {LAN label: ifname}."""
-    cp = configparser.ConfigParser()
+    """Read [port_map] from an INI config into {LAN label: ifname}.
+
+    Inline comments are stripped, so a readable per-port annotation such as
+    'LAN1 = enp3s0   # onboard 1' yields the ifname alone.
+    """
+    cp = configparser.ConfigParser(inline_comment_prefixes=("#", ";"))
     cp.optionxform = str  # preserve LAN1 case
     if not cp.read(path, encoding="utf-8"):
         raise FileNotFoundError("config not found: %s" % path)

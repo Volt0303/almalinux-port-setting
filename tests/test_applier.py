@@ -117,9 +117,33 @@ class TestApplyMachine(unittest.TestCase):
 
 class TestConfigLoad(unittest.TestCase):
     def test_reads_intel_config(self):
+        # config_intel.ini is machine-specific (gitignored); skip if absent.
+        if not os.path.isfile(CONFIG):
+            self.skipTest("config_intel.ini not present on this machine")
         pm = load_port_map(CONFIG)
         self.assertEqual(pm["LAN1"], "enp3s0")
         self.assertEqual(len(pm), 6)
+
+    def test_strips_inline_comments(self):
+        """A per-port annotation must not leak into the ifname."""
+        import tempfile
+        body = (
+            "[board]\nname = AMD-QC\n\n[port_map]\n"
+            "LAN1 = enp3s0      # onboard 1 (r8169)\n"
+            "LAN2 = enp2s0      ; onboard 2\n"
+            "LAN3 = enp1s0f3\n"
+        )
+        with tempfile.NamedTemporaryFile("w", suffix=".ini", delete=False,
+                                         encoding="utf-8") as f:
+            f.write(body)
+            path = f.name
+        try:
+            pm = load_port_map(path)
+            self.assertEqual(pm["LAN1"], "enp3s0")
+            self.assertEqual(pm["LAN2"], "enp2s0")
+            self.assertEqual(pm["LAN3"], "enp1s0f3")
+        finally:
+            os.remove(path)
 
 
 if __name__ == "__main__":
