@@ -26,13 +26,14 @@ import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
-from .core import loader, pipeline
+from .core import detect, loader, pipeline
 from .core.applier import Applier, load_port_map
 from .core.compare import summarize
 from .core.logwriter import LogWriter, build_rows
 from .core.reader import Reader
 
-DEFAULT_CONFIG = os.path.join("config", "config_intel.ini")
+CONFIG_DIR = "config"
+DEFAULT_CONFIG = os.path.join(CONFIG_DIR, "config_intel.ini")
 LOG_NAME = "result.csv"
 INSTALL_DIR = "/opt/ipset"
 
@@ -113,6 +114,9 @@ class App(tk.Tk):
         self._commit_log_path = None
         self._build()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
+        # pick the board config for THIS machine (silent at startup; the
+        # 自動判別 button re-runs it with a message box)
+        self._detect_config(announce=False)
 
     # ---- layout ---------------------------------------------------------
     def _build(self):
@@ -127,6 +131,7 @@ class App(tk.Tk):
         ttk.Label(top, text="設定INI:").grid(row=1, column=0, sticky="w")
         self.config_var = tk.StringVar(value=DEFAULT_CONFIG)
         ttk.Entry(top, textvariable=self.config_var, width=58).grid(row=1, column=1, sticky="we")
+        ttk.Button(top, text="自動判別", command=self._detect_config).grid(row=1, column=2)
 
         ttk.Label(top, text="対象シリアル:").grid(row=2, column=0, sticky="w")
         self.serial_var = tk.StringVar()
@@ -176,6 +181,35 @@ class App(tk.Tk):
             tree.column(c, width=160 if c not in ("LAN", "Port", "結果") else 80)
         tree.pack(fill="x", padx=6)
         return tree
+
+    # ---- board config auto-detection ------------------------------------
+    def _detect_config(self, announce=True):
+        """Pick the config whose port_map matches this machine's interfaces."""
+        try:
+            match = detect.detect_config(CONFIG_DIR)
+        except Exception as e:  # noqa: BLE001
+            if announce:
+                messagebox.showwarning("自動判別", "判別に失敗しました: %s" % e)
+            return
+        if match:
+            self.config_var.set(match.path)
+            self.status.set("ボード自動判別: %s（%s / %d ポート一致）" % (
+                os.path.basename(match.path), match.board or "-", match.matched))
+            self._show_expected()
+            return
+        # no perfect match - tell the operator what was found
+        ranked = detect.evaluate_configs(CONFIG_DIR)
+        detail = "\n".join(
+            "・%s（%s）%d/%d 一致　未検出: %s" % (
+                os.path.basename(m.path), m.board or "-", m.matched, m.total,
+                ", ".join(m.missing) or "-")
+            for m in ranked) or "（configフォルダに設定INIがありません）"
+        self.status.set("ボード自動判別: 該当なし。設定INIを手動で指定してください。")
+        if announce:
+            messagebox.showwarning(
+                "自動判別",
+                "この機体に一致する設定INIが見つかりませんでした。\n"
+                "設定INI欄で手動指定してください。\n\n" + detail)
 
     # ---- serial type-to-filter -----------------------------------------
     def _on_serial_key(self, event):

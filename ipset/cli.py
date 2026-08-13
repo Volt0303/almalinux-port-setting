@@ -21,13 +21,13 @@ import subprocess
 import sys
 from typing import List, Optional
 
-from .core import loader, pipeline
+from .core import detect, loader, pipeline
 from .core.applier import Applier, load_port_map
 from .core.compare import PortComparison, summarize
 from .core.logwriter import LogWriter, build_rows
 from .core.reader import Reader
 
-DEFAULT_CONFIG = os.path.join("config", "config_intel.ini")
+CONFIG_DIR = "config"
 
 
 # --------------------------------------------------------------------------
@@ -45,6 +45,28 @@ def detect_serial(runner=None) -> Optional[str]:
     val = (proc.stdout or "").strip()
     bogus = {"", "to be filled by o.e.m.", "system serial number", "default string", "none"}
     return None if val.lower() in bogus else val
+
+
+def auto_config(config_dir: str = CONFIG_DIR, out=sys.stdout):
+    """Pick the board config matching this machine. Returns (path, error)."""
+    match = detect.detect_config(config_dir)
+    if match:
+        print("Board config: %s (%s: %d/%d ports matched)" % (
+            match.path, match.board or "unnamed", match.matched, match.total),
+            file=out)
+        return match.path, None
+
+    # Nothing matched perfectly - explain what was found so the operator can fix it.
+    ranked = detect.evaluate_configs(config_dir)
+    if not ranked:
+        return None, ("no usable config found in %s (use --config)" % config_dir)
+    lines = ["no config matches this machine's interfaces; specify --config.",
+             "  candidates:"]
+    for m in ranked:
+        lines.append("    %s (%s) %d/%d matched; missing: %s" % (
+            m.path, m.board or "unnamed", m.matched, m.total,
+            ", ".join(m.missing) or "-"))
+    return None, "\n".join(lines)
 
 
 def select_machine(res: loader.LoadResult, serial: Optional[str], detect_runner=None):
@@ -121,7 +143,9 @@ def _print_table(sn, comparisons, out):
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="ipset", description="6-port LAN IP set & verify")
     p.add_argument("file", help="supply CSV/xlsx file")
-    p.add_argument("--config", default=DEFAULT_CONFIG, help="port-map INI (default: %s)" % DEFAULT_CONFIG)
+    p.add_argument("--config", default=None,
+                   help="port-map INI (default: auto-detect from config/ by "
+                        "matching this machine's interfaces)")
     p.add_argument("--serial", help="target serial number (else auto-detect)")
     p.add_argument("--commit", action="store_true", help="actually apply (default is dry-run)")
     p.add_argument("--log", default=os.path.join("logs", "result.csv"), help="CSV log path")
@@ -145,8 +169,15 @@ def main(argv: Optional[List[str]] = None, out=sys.stdout) -> int:
             print("%s  (%d ports)" % (sn, len(res.machines[sn].ports)), file=out)
         return 0
 
+    config_path = args.config
+    if config_path is None:
+        config_path, err = auto_config(out=out)
+        if err:
+            print("ERROR: %s" % err, file=out)
+            return 2
+
     try:
-        port_map = load_port_map(args.config)
+        port_map = load_port_map(config_path)
     except (FileNotFoundError, ValueError) as e:
         print("ERROR: %s" % e, file=out)
         return 2
