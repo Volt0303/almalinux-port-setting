@@ -39,6 +39,8 @@ IPv4固定設定を自動適用し、実適用値を読み戻して照合、結�
 - **ドライラン**（既定）で実行内容を事前確認、ネットワークを変更しない
 - ポート単位の失敗を隔離（1ポート失敗しても残りは継続）
 - シリアル番号の **自動判別**（`dmidecode`）
+- **ボード設定の自動判別** … 実機のインターフェース構成から `config_intel.ini` /
+  `config_amd.ini` を自動選択（Intel機・AMD機の設定取り違えを防止）
 - **対象シリアルの絞り込み入力** … 一部入力で候補表示（例：「199」→候補）。400台生産の効率化
 - **出荷前クリーニング** … 本適用・ログ出力後、ウィンドウの×で本ツールを自己アンインストール
   （ログはデスクトップに保存。既定では削除せず残す）
@@ -75,7 +77,8 @@ Linux-port-setting/
 │  │  ├─ reader.py       実適用値の読み戻し
 │  │  ├─ compare.py      期待値 vs 実値 の照合
 │  │  ├─ logwriter.py    CSVログ追記（UTF-8 BOM）
-│  │  └─ pipeline.py     CLI/GUI共通のオーケストレーション
+│  │  ├─ pipeline.py     CLI/GUI共通のオーケストレーション
+│  │  └─ detect.py       ボード設定（config）の自動判別
 │  ├─ cli.py             ヘッドレス実行（SSH/自動化）
 │  └─ gui.py             Tkinter GUI（現場作業者向け）
 ├─ tools/
@@ -87,6 +90,7 @@ Linux-port-setting/
 ├─ tests/                unittest（stdlibのみ・pytest不要）
 ├─ logs/                 CSV結果ログ（gitignore）
 ├─ docs/
+│  ├─ インストール手順書.md      新規PCへの導入手順（非技術者向け・手順追従式）
 │  ├─ 操作マニュアル.md          現場作業者向け操作手順
 │  └─ 検収チェックリスト.md       受入基準（仕様書16章）
 ├─ run_cli.py / run_gui.py       PyInstaller エントリポイント
@@ -141,6 +145,10 @@ bash build.sh
 新しい AlmaLinux 機へ導入する際の、最初から最後までの手順。
 **最重要ポイントは手順3（ポートマッピング）** です。ポート名は機種ごとに異なります。
 
+> **非技術者の方が作業される場合** は、より詳細な手順追従式の
+> **`docs/インストール手順書.md`** をご利用ください（端末の開き方から、
+> 確認ポイント・トラブル対処まで記載）。
+
 ### 1. ファイルを配置
 **量産機へ配置するのは `dist/` フォルダ一式 と `setup_desktop.sh` の2つ**です
 （Pythonソースは不要。ビルド済み実行ファイルで動作します）。
@@ -170,7 +178,18 @@ python3 tools/inventory.py
 ```bash
 sudo ethtool -p <ifname> 10
 ```
-> 現行機と **同一ハードウェア** なら既存の `config_intel.ini` をそのまま流用可。
+> 現行機と **同一ハードウェア** なら既存の設定INIをそのまま流用可。
+> 既に該当機種のINIが `config/` にあれば、実行時に **自動判別** されます。
+
+> **注意**: Realtek系オンボードNIC（`r8169`）は `ethtool -p` に非対応で
+> `Cannot identify NIC: Operation not supported` となります。その場合は
+> ケーブルの抜き差しでリンク状態を見て特定してください:
+> ```bash
+> for i in enp3s0 enp2s0 enp1s0f0 enp1s0f1 enp1s0f2 enp1s0f3; do
+>   printf "%-10s carrier=%s\n" $i $(cat /sys/class/net/$i/carrier 2>/dev/null)
+> done
+> ```
+> `1` = ケーブル接続あり。1本ずつ挿して該当ifnameを特定します。
 
 ### 4. ビルド（未ビルドの場合）
 ```bash
@@ -225,7 +244,7 @@ sudo python3 -m ipset.cli 支給ファイル.csv --serial F30126E001 --commit
 |---|---|
 | `--serial <SN>` | 対象シリアル（省略時は `dmidecode` で自動判別、単一機なら自動選択） |
 | `--commit`      | 実際に適用（既定はドライラン） |
-| `--config <path>` | ポートマッピングINI（既定 `config/config_intel.ini`） |
+| `--config <path>` | ポートマッピングINI（**省略時は自動判別**。`config/` 内から実機に一致するものを選択） |
 | `--log <path>`  | CSVログの保存先（既定 `logs/result.csv`） |
 | `--list`        | シリアル一覧を表示して終了 |
 
@@ -279,8 +298,38 @@ LAN5 = enp1s0f1
 LAN6 = enp1s0f0
 ```
 
+行末の `#` 以降はコメントとして無視されます（`LAN1 = enp3s0   # オンボード1` 可）。
+
 `config/config_intel.ini` は機種固有のため **gitignore** 対象。雛形
 `config_intel.ini.example` をコピーして実名を記入してください。
+
+### ボード設定の自動判別
+
+`config/` 内の各INIの `[port_map]` と、**実機に実在するインターフェース**を突き合わせ、
+一致する設定を自動選択します（`ipset/core/detect.py`）。400台の量産で作業者が
+設定INIを取り違えるリスクを排除するための機能です。
+
+```
+AMD実機で実行した場合の判定例
+  config/config_amd.ini        6/6 一致   ← 自動選択
+  config/config_intel.ini      5/6 一致（enp4s0 が存在しない）
+```
+
+- **全ポート一致（完全一致）した場合のみ採用**します。部分一致の設定を
+  黙って使うことはありません（誤ったボードへの適用を防止）。
+- 一致するものが無い場合は**エラー終了（終了コード2）**し、候補と不足ifnameを表示します。
+- CLI は `--config` 省略時に自動判別、GUI は起動時に自動判別して「設定INI」欄へ反映します
+  （GUIの **［自動判別］** ボタンで再実行可）。
+- 明示指定したい場合は従来どおり `--config config/config_amd.ini` が使えます。
+
+実機の判定結果を確認するコマンド:
+```bash
+python3 -c "
+from ipset.core import detect
+for m in detect.evaluate_configs('config'):
+    print('%-28s %d/%d  missing=%s' % (m.path, m.matched, m.total, m.missing or '-'))
+"
+```
 
 ---
 
@@ -324,6 +373,8 @@ python3 -m unittest discover -s tests
 | ×を押しても削除確認が出ない | 本適用＋ログ出力が未完了 | 削除確認は **本適用しログ保存が成功した後のみ** 表示（ドライランのみは通常終了） |
 | アンインストールで一部削除できない | root権限でない／ソース実行 | GUIは `launch_gui.sh`（sudo）経由で起動。`/opt/ipset`・sudoers 削除には root が必要 |
 | ログがデスクトップに無い | 実ユーザ判定不可 | `SUDO_USER` を保持した起動（`launch_gui.sh`）で実ユーザのデスクトップへ保存 |
+| **アイコン起動とコマンド実行で動作が違う**（例: 設定INIが `config_intel.ini` のまま） | **アイコンは `/opt/ipset` の導入版、コマンドは作業フォルダのソースを実行**（別物） | ソース変更後は `bash build.sh` → `sudo bash setup_desktop.sh` で導入版を更新 |
+| 自動判別が効かない（導入版） | `/opt/ipset/config/` に該当INIが無い／導入版が旧ビルド | `ls /opt/ipset/config/` で確認。`build.sh` は `config/*.ini` を全てコピーします |
 
 > **注意（リモート作業時）**: AnyDesk 接続を保持しているインターフェース
 > （例: `enp3s0` 192.168.1.41/24）に対して `--commit` を実行すると接続が切れます。
@@ -333,13 +384,35 @@ python3 -m unittest discover -s tests
 
 ## Intel → AMD 移行（Phase 2）
 
-コード変更は不要。移行作業の本体は **config ファイルの差し替え** です。
+コード変更は不要。移行作業の本体は **config ファイルの追加** です。
+`config_amd.ini` を置けば、以降は**実行時に自動判別**されます。
 
 1. Intel検証機の SSD を AMD実機へ移設。
 2. AMD実機で `python3 tools/inventory.py` を再実行し ifname を確認。
-3. 差分を `config/config_amd.ini` に反映（`--config` で指定、またはGUIのINI欄で選択）。
+3. 結果を `config/config_amd.ini` に保存。
 4. `nmcli device status` で全6ポートの認識を確認。
 5. 検収チェックリスト B項（1〜7）を再実施。
+
+### AMD実機（ASRock IMB-A8000M）の実測構成（2026-07-28 取得）
+
+| 区分 | ifname | ドライバ |
+|---|---|---|
+| オンボード2ポート | `enp2s0`, `enp3s0` | `r8169`（Realtek） |
+| 増設 I350-T4V2 | `enp1s0f0`〜`enp1s0f3` | `igb`（Intel） |
+
+> **Intel検証機との差異**: Intel機の `enp4s0` は **AMD機には存在しません**。
+> そのため Intel用INIをAMD機で使うと LAN2 が失敗します。自動判別により
+> この取り違えは防止されます（Intel設定は 5/6 一致で不採用）。
+
+### 動作確認済み（Phase 2）
+
+AMD実機にて LAN2〜LAN6（5ポート）で本適用・読み戻し・照合・ログ出力まで
+`PASS (OK=5 NG=0)` を確認済み。
+
+> **未確認事項**: LAN1（`enp3s0`）はリモート接続（AnyDesk）を保持しているため
+> 本適用の検証を行っていません。量産展開前にローカル環境での確認が必要です。
+> また LAN1/LAN2 の物理ラベル対応は、Realtek が `ethtool -p` 非対応のため
+> ケーブル抜き差しによる確認が必要です。
 
 詳細は `docs/検収チェックリスト.md` を参照。
 
