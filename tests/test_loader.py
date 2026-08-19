@@ -73,6 +73,65 @@ class TestLoaderEdgeCases(unittest.TestCase):
         res = loader.load("/no/such/file.csv")
         self.assertFalse(res.ok)
 
+    # -- same-subnet detection (customer request: multi-port connectivity) ----
+    def _subnet_warnings(self, res):
+        return [w for w in res.warnings if "同一サブネット" in w]
+
+    def test_warns_when_ports_share_a_subnet(self):
+        p = self._write(
+            "SN,con_name,ip_address,subnet\n"
+            "A,LAN1,192.168.1.101,255.255.255.0\n"
+            "A,LAN2,192.168.1.102,255.255.255.0\n"
+            "A,LAN3,192.168.1.103,255.255.255.0\n"
+        )
+        res = loader.load(p)
+        self.assertTrue(res.ok, res.errors)
+        warns = self._subnet_warnings(res)
+        self.assertEqual(len(warns), 1, warns)
+        for lan in ("LAN1", "LAN2", "LAN3"):
+            self.assertIn(lan, warns[0])
+        self.assertIn("192.168.1.0/24", warns[0])
+
+    def test_no_warning_when_subnets_differ(self):
+        p = self._write(
+            "SN,con_name,ip_address,subnet\n"
+            "B,LAN1,192.168.1.100,255.255.255.0\n"
+            "B,LAN2,192.168.2.100,255.255.255.0\n"
+        )
+        res = loader.load(p)
+        self.assertEqual(self._subnet_warnings(res), [])
+
+    def test_subnet_grouping_is_per_machine(self):
+        """Two machines reusing the same plan must not warn against each other."""
+        p = self._write(
+            "SN,con_name,ip_address,subnet\n"
+            "M1,LAN1,192.168.1.100,255.255.255.0\n"
+            "M2,LAN1,192.168.1.100,255.255.255.0\n"
+        )
+        res = loader.load(p)
+        self.assertEqual(self._subnet_warnings(res), [])
+
+    def test_invalid_rows_do_not_break_subnet_check(self):
+        p = self._write(
+            "SN,con_name,ip_address,subnet\n"
+            "C,LAN1,not-an-ip,255.255.255.0\n"
+            "C,LAN2,192.168.1.102,255.255.255.0\n"
+        )
+        res = loader.load(p)          # must not raise
+        self.assertEqual(self._subnet_warnings(res), [])
+
+    def test_warns_once_per_subnet_group(self):
+        """Different subnets each get their own single warning."""
+        p = self._write(
+            "SN,con_name,ip_address,subnet\n"
+            "D,LAN1,192.168.1.101,255.255.255.0\n"
+            "D,LAN2,192.168.1.102,255.255.255.0\n"
+            "D,LAN3,10.0.0.1,255.255.255.0\n"
+            "D,LAN4,10.0.0.2,255.255.255.0\n"
+        )
+        res = loader.load(p)
+        self.assertEqual(len(self._subnet_warnings(res)), 2)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

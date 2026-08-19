@@ -34,6 +34,7 @@ cp config/*.ini.example dist/config/ 2>/dev/null || true
 echo "   configs staged: $(ls -1 dist/config/*.ini 2>/dev/null | wc -l)"
 cp docs/操作マニュアル.md dist/ 2>/dev/null || true
 cp docs/インストール手順書.md dist/ 2>/dev/null || true
+mkdir -p dist/extras && cp extras/*.conf dist/extras/ 2>/dev/null || true
 cp IPsetting_sample.csv dist/ 2>/dev/null || true
 
 echo ">> staging launcher"

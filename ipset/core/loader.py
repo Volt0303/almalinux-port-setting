@@ -13,9 +13,12 @@ Python 3.9 compatible; CSV path is stdlib-only (openpyxl imported lazily).
 from __future__ import annotations
 
 import csv
+import ipaddress
 import os
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
+
+from . import netmask
 
 # Canonical field name -> accepted header aliases (all compared lower/stripped).
 _ALIASES = {
@@ -147,6 +150,7 @@ def load(path: str) -> LoadResult:
         res.machines.setdefault(pr.sn, Machine(sn=pr.sn)).ports.append(pr)
 
     _check_duplicate_ips(res)
+    _check_same_subnet(res)
     return res
 
 
@@ -164,6 +168,34 @@ def _check_duplicate_ips(res: LoadResult) -> None:
                 )
             else:
                 seen[p.ip_address] = p
+
+
+def _check_same_subnet(res: LoadResult) -> None:
+    """Warn when several ports of one machine share an IPv4 subnet.
+
+    Linux does not route between same-subnet interfaces on its own: only the
+    port whose route wins in the main table stays reachable unless the OS is
+    tuned (rp_filter / policy routing). Setting the addresses still succeeds,
+    so the operator gets no other signal - hence this warning.
+    """
+    for m in res.machines.values():
+        groups = {}
+        for p in m.ports:
+            try:
+                cidr = netmask.to_cidr(p.ip_address, p.subnet)
+                network = str(ipaddress.ip_network(cidr, strict=False))
+            except (netmask.ValidationError, ValueError):
+                continue  # invalid rows are reported elsewhere
+            groups.setdefault(network, []).append(p)
+        for network, ports in groups.items():
+            if len(ports) < 2:
+                continue
+            names = "、".join(p.con_name for p in ports)
+            res.warnings.append(
+                "SN %s: %s が同一サブネット (%s) です。"
+                "複数ポートで疎通させる場合はOS側の設定（rp_filter）調整が"
+                "必要になることがあります。" % (m.sn, names, network)
+            )
 
 
 def find_machine(res: LoadResult, sn: str) -> Optional[Machine]:
